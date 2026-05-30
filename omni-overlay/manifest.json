@@ -5,14 +5,21 @@
   "minOmniVersion": "3.6.0",
   "author": "haritha99ch",
   "license": "MIT",
-  "description": "Game Bar: Discord voice status panel. Extends Super+G on WS 10/11 to show Discord VC + system stats.",
-  "tags": ["Gaming", "Discord", "Overlay"],
+  "description": "Xbox Game Bar-style overlay with Discord voice, OBS control, Steam chat, audio and performance widgets.",
+  "tags": ["Gaming", "Overlay"],
   "entryPoints": {
     "main": "Main.qml",
     "barWidget": "BarWidget.qml",
     "panel": "Panel.qml"
   },
   "metadata": {
-    "defaultSettings": {}
+    "defaultSettings": {
+      "widgetSources": [
+        {
+          "name": "Omni Overlay Widgets",
+          "url": "https://github.com/haritha99ch/omni-overlay-widgets"
+        }
+      ]
+    }
   }
 }

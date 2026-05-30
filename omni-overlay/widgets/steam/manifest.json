@@ -1,9 +1,0 @@
-{
-  "id": "steam",
-  "name": "Steam Chat",
-  "file": "SteamWidget.qml",
-  "iconSrc": "file:///usr/share/icons/hicolor/48x48/apps/steam.png",
-  "iconFallback": "brand-steam",
-  "defaultX": "right",
-  "defaultY": 50
-}

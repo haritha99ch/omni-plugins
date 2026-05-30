@@ -6,7 +6,7 @@
       "version": "0.1.0",
       "author": "haritha99ch",
       "license": "MIT",
-      "description": "Xbox Game Bar-style overlay with Discord voice, OBS control, Steam chat, audio and performance widgets.",
+      "description": "Xbox Game Bar-style gaming overlay with audio and performance widgets built-in. Discord, OBS and Steam widgets installable from the built-in widget marketplace.",
       "tags": ["Gaming", "Discord", "Overlay", "OBS", "Steam"],
       "minOmniVersion": "3.6.0",
       "lastUpdated": "2026-05-30T00:00:00Z"
