@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
-import qs.Services.Compositor
 import qs.Services.UI
 
 Item {
@@ -10,10 +9,11 @@ Item {
   property var pluginApi: null
 
   property bool overlayActive: false
-  property bool _suppressBarClose: false
   property var  _overlayComponent: null
-  property var  _windows: ({})   // screen.name -> OmniOverlayWindow
-  property var  _activeWindow: null   // the currently visible one
+  property var  _windows: ({})  // screen.name -> OmniOverlayWindow
+  property var  _activeWindow: null
+
+  readonly property var _overlayWindow: _activeWindow
 
   onPluginApiChanged: {
     if (!pluginApi) return;
@@ -21,9 +21,6 @@ Item {
     if (_overlayComponent.status === Component.Error)
       Logger.e("OmniOverlay", "pre-load error:", _overlayComponent.errorString());
   }
-
-  // Expose the active window's discordWidget for BarWidget
-  readonly property var _overlayWindow: _activeWindow
 
   IpcHandler {
     target: "plugin:omni-overlay"
@@ -33,28 +30,7 @@ Item {
     }
   }
 
-  Connections {
-    target: BarService
-    function onWorkspaceBarOverrideChanged() {
-      if (BarService.workspaceBarOverride) {
-        if (root.overlayActive) closeOmniOverlay(); else openOmniOverlay();
-        if (_isBarHiddenWs()) { root._suppressBarClose = true; BarService.workspaceBarOverride = false; }
-      } else if (!root._suppressBarClose && root.overlayActive) {
-        closeOmniOverlay();
-      }
-      root._suppressBarClose = false;
-    }
-  }
-
-  function _isBarHiddenWs() {
-    var wsMap = CompositorService.activeWorkspaceIdPerScreen;
-    for (var s in wsMap)
-      if (Settings.isBarHiddenForWorkspace(wsMap[s])) return true;
-    return false;
-  }
-
   function _setActiveWindow(win) {
-    // Clear voice HUD on all windows, enable only on the newly active one
     for (var sn in root._windows) root._windows[sn].showVoiceHud = false;
     if (win) win.showVoiceHud = true;
     root._activeWindow = win;
@@ -65,10 +41,8 @@ Item {
     root.overlayActive = true;
     if (!pluginApi) return;
     pluginApi.withCurrentScreen(function(s) {
-      // Hide the previously active window if it's on a different screen
       if (root._activeWindow && root._activeWindow !== root._windows[s.name])
         root._activeWindow.panelsVisible = false;
-
       if (root._windows[s.name]) {
         _setActiveWindow(root._windows[s.name]);
         root._activeWindow.panelsVisible = true;

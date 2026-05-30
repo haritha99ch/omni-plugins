@@ -138,7 +138,7 @@ Item {
 
         RowLayout {
           Layout.fillWidth: true; spacing: Style.marginXS
-          TextField { id: chatField; Layout.fillWidth: true; placeholderText: "Message..."; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface; background: Rectangle { color: Color.mSurfaceVariant; radius: Style.radiusS }
+          TextField { id: chatField; Layout.fillWidth: true; placeholderText: "Message..."; placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface; background: Rectangle { color: Color.mSurfaceVariant; radius: Style.radiusS }
             onAccepted: { if (text.trim()!=="") { root.mi?.steamSend(root.selectedSteamId,text.trim()); text=""; } }
           }
           NIconButton { icon: "send"; baseSize: Style.baseWidgetSize*0.8; enabled: chatField.text.trim()!==""; onClicked: { if(chatField.text.trim()!==""){root.mi?.steamSend(root.selectedSteamId,chatField.text.trim());chatField.text="";} } }

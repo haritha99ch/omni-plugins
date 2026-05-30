@@ -51,7 +51,69 @@ PanelWindow {
   // Island state
   property int  pillMode: 0
   property bool widgetMenuOpen: false
+  property bool settingsPanelOpen: false
   property var  recentGames: []
+
+  // Widget source / marketplace
+  property var widgetSources: []        // [{name, url}]  -  persisted
+  property var remoteWidgets: []        // [{id, name, description, version, author, iconFallback, sourceUrl}]
+  property bool fetchingRegistry: false
+
+  function isWidgetInstalled(id) {
+    return root.widgetManifests.some(function(m){ return m.id === id; });
+  }
+
+  function _saveWidgetSources() {
+    if (!pluginApi) return;
+    var s = Object.assign({}, pluginApi.pluginSettings);
+    s.widgetSources = root.widgetSources;
+    pluginApi.pluginSettings = s;
+    pluginApi.saveSettings();
+  }
+
+  function addWidgetSource(name, url) {
+    if (!url.trim() || !name.trim()) return;
+    var exists = root.widgetSources.some(function(s){ return s.url === url.trim(); });
+    if (exists) return;
+    root.widgetSources = root.widgetSources.concat([{ name: name.trim(), url: url.trim() }]);
+    _saveWidgetSources();
+    fetchRemoteWidgets();
+  }
+
+  function removeWidgetSource(url) {
+    root.widgetSources = root.widgetSources.filter(function(s){ return s.url !== url; });
+    _saveWidgetSources();
+    root.remoteWidgets = root.remoteWidgets.filter(function(w){ return w.sourceUrl !== url; });
+  }
+
+  function fetchRemoteWidgets() {
+    if (root.widgetSources.length === 0 || root.fetchingRegistry) return;
+    root.fetchingRegistry = true;
+    root.remoteWidgets = [];
+    var remaining = root.widgetSources.length;
+    root.widgetSources.forEach(function(src) {
+      var proc = registryFetchTemplate.createObject(root, { sourceUrl: src.url });
+      proc.onExited.connect(function(code) {
+        remaining--;
+        if (remaining === 0) root.fetchingRegistry = false;
+        proc.destroy();
+      });
+      proc.running = true;
+    });
+  }
+
+  function installWidget(remoteWidget) {
+    var proc = widgetInstallerTemplate.createObject(root, {
+      widgetId:  remoteWidget.id,
+      sourceUrl: remoteWidget.sourceUrl
+    });
+    proc.running = true;
+  }
+
+  function removeWidget(id) {
+    var proc = widgetRemoverTemplate.createObject(root, { widgetId: id });
+    proc.running = true;
+  }
 
   signal positionSaved(string key, int x, int y)
 
@@ -59,18 +121,94 @@ PanelWindow {
   function _saveState() {
     if (!pluginApi) return;
     var s = Object.assign({}, pluginApi.pluginSettings);
-    s.widgetVisible = root.widgetVisible;
-    s.widgetPinned  = root.widgetPinned;
-    s.pillMode      = root.pillMode;
+    s.widgetVisible  = root.widgetVisible;
+    s.widgetPinned   = root.widgetPinned;
+    s.pillMode       = root.pillMode;
+    s.widgetSources  = root.widgetSources;
     pluginApi.pluginSettings = s;
     pluginApi.saveSettings();
   }
 
   function _loadState() {
     var s = pluginApi?.pluginSettings ?? {};
-    if (s.widgetVisible) root.widgetVisible = Object.assign({}, s.widgetVisible);
-    if (s.widgetPinned)  root.widgetPinned  = Object.assign({}, s.widgetPinned);
+    if (s.widgetVisible)  root.widgetVisible  = Object.assign({}, s.widgetVisible);
+    if (s.widgetPinned)   root.widgetPinned   = Object.assign({}, s.widgetPinned);
     if (s.pillMode !== undefined) root.pillMode = s.pillMode;
+    if (s.widgetSources)  root.widgetSources  = s.widgetSources.slice();
+    Qt.callLater(fetchRemoteWidgets);
+  }
+
+  // Registry fetch — one instance per source (created dynamically)
+  Component {
+    id: registryFetchTemplate
+    Process {
+      property string sourceUrl: ""
+      stdinEnabled: false
+      command: ["sh", "-c",
+        "tmp=$(mktemp -d) && " +
+        "git clone --filter=blob:none --sparse --depth=1 '" + sourceUrl + "' \"$tmp\" -q 2>/dev/null && " +
+        "git -C \"$tmp\" sparse-checkout set --no-cone /registry.json -q 2>/dev/null && " +
+        "cat \"$tmp/registry.json\"; rm -rf \"$tmp\""]
+      stdout: SplitParser {
+        onRead: function(line) {
+          line = line.trim();
+          if (!line) return;
+          try {
+            var reg = JSON.parse(line);
+            var widgets = reg.widgets || [];
+            var toAdd = widgets.filter(function(w){ return !root.isWidgetInstalled(w.id); });
+            toAdd.forEach(function(w){ w.sourceUrl = parent.parent.sourceUrl; });
+            root.remoteWidgets = root.remoteWidgets.concat(toAdd);
+          } catch(e) {}
+        }
+      }
+    }
+  }
+
+  // Widget installer — clones specific widget folder from source
+  Component {
+    id: widgetInstallerTemplate
+    Process {
+      property string widgetId: ""
+      property string sourceUrl: ""
+      readonly property string _widgetsDir: root.pluginApi ? root.pluginApi.pluginDir + "/widgets" : ""
+      command: ["sh", "-c",
+        "tmp=$(mktemp -d) && " +
+        "git clone --filter=blob:none --sparse --depth=1 '" + sourceUrl + "' \"$tmp\" -q 2>/dev/null && " +
+        "git -C \"$tmp\" sparse-checkout set --no-cone '" + widgetId + "' -q 2>/dev/null && " +
+        "mkdir -p '" + _widgetsDir + "' && " +
+        "cp -r \"$tmp/" + widgetId + "/.\" '" + _widgetsDir + "/" + widgetId + "/'; " +
+        "rm -rf \"$tmp\""]
+      onExited: function(code) {
+        if (code === 0) {
+          root.remoteWidgets = root.remoteWidgets.filter(function(w){ return w.id !== widgetId; });
+          root._widgetsLoaded = false;
+          root._positionsInitialized = false;
+          root._discoverWidgets();
+        }
+        destroy();
+      }
+    }
+  }
+
+  // Widget remover
+  Component {
+    id: widgetRemoverTemplate
+    Process {
+      property string widgetId: ""
+      readonly property string _widgetPath: root.pluginApi ? root.pluginApi.pluginDir + "/widgets/" + widgetId : ""
+      command: ["sh", "-c", "rm -rf '" + _widgetPath + "'"]
+      onExited: function(code) {
+        var inst = root.widgetInstances[widgetId];
+        if (inst) inst.destroy();
+        var insts = Object.assign({}, root.widgetInstances);
+        delete insts[widgetId];
+        root.widgetInstances = insts;
+        root.widgetManifests = root.widgetManifests.filter(function(m){ return m.id !== widgetId; });
+        fetchRemoteWidgets();
+        destroy();
+      }
+    }
   }
 
   onWidgetVisibleChanged: _saveState()
@@ -400,34 +538,147 @@ PanelWindow {
               activeColor: Color.mPrimary
               onClicked: root.clickThrough = !root.clickThrough
             }
+
+            // Widget settings
+            Rectangle { visible: root.pillMode===0; width: 1; height: Math.round(30*Style.uiScaleRatio); color: Color.mOutline; opacity: 0.5; anchors.verticalCenter: parent?.verticalCenter }
+            PillBtn {
+              visible: root.pillMode===0
+              fallbackIcon: "settings"
+              label: "Widget settings"
+              active: root.settingsPanelOpen
+              activeColor: Color.mPrimary
+              onClicked: { root.settingsPanelOpen = !root.settingsPanelOpen; if (root.settingsPanelOpen) root.widgetMenuOpen = false; }
+            }
           }
         }
 
-        // Widget menu  -  lists discovered widgets, no hardcoded entries
+        // Widget menu  -  installed widgets + downloadable from sources
         Rectangle { width: parent.width; height: 1; visible: root.widgetMenuOpen; color: Color.mOutline; opacity: 0.5 }
         Column {
           visible: root.widgetMenuOpen; width: parent.width; spacing: 0
+
+          // Installed widgets
           Repeater {
             model: root.widgetManifests
             delegate: Rectangle {
               required property var modelData; required property int index
               width: parent.width; height: Math.round(42*Style.uiScaleRatio)
               color: wHov.containsMouse?Qt.alpha(Color.mOnSurface,0.06):"transparent"
-              radius: index===root.widgetManifests.length-1?Style.radiusL:0
               Behavior on color { ColorAnimation { duration: 80 } }
               RowLayout {
                 anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: Style.marginM; rightMargin: Style.marginS } spacing: Style.marginS
                 IconImage { width: Math.round(20*Style.uiScaleRatio); height: width; source: modelData.iconSrc; smooth: true; asynchronous: true; opacity: 0.85 }
                 NText { Layout.fillWidth: true; text: modelData.name; pointSize: Style.fontSizeS; color: Color.mOnSurface }
                 Rectangle { width: 6; height: 6; radius: 3; color: (root.widgetVisible[modelData.id]??true)?Color.mPrimary:Qt.alpha(Color.mOnSurfaceVariant,0.3); Behavior on color{ColorAnimation{duration:120}} }
+                // Pin / unpin
                 Rectangle {
                   width: Math.round(28*Style.uiScaleRatio); height: width; radius: Style.radiusS
                   color: starHov.containsMouse?Qt.alpha(Color.mOnSurface,0.1):"transparent"; Behavior on color{ColorAnimation{duration:80}}
                   NIcon { anchors.centerIn: parent; icon: (root.widgetPinned[modelData.id]??true)?"star-filled":"star"; pointSize: Style.fontSizeM; applyUiScale: false; color: (root.widgetPinned[modelData.id]??true)?Color.mPrimary:Color.mOnSurfaceVariant; Behavior on color{ColorAnimation{duration:120}} }
                   MouseArea { id: starHov; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root._togglePin(modelData.id); onEntered: TooltipService.show(parent,(root.widgetPinned[modelData.id]??true)?"Unpin":"Pin to island"); onExited: TooltipService.hide() }
                 }
+                // Remove widget
+                Rectangle {
+                  width: Math.round(28*Style.uiScaleRatio); height: width; radius: Style.radiusS
+                  color: trashHov.containsMouse?Qt.alpha(Color.mError,0.15):"transparent"; Behavior on color{ColorAnimation{duration:80}}
+                  NIcon { anchors.centerIn: parent; icon: "trash"; pointSize: Style.fontSizeM; applyUiScale: false; color: trashHov.containsMouse?Color.mError:Color.mOnSurfaceVariant; Behavior on color{ColorAnimation{duration:80}} }
+                  MouseArea { id: trashHov; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeWidget(modelData.id); onEntered: TooltipService.show(parent,"Remove widget"); onExited: TooltipService.hide() }
+                }
               }
               MouseArea { id: wHov; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+            }
+          }
+
+          // Downloadable widgets from sources
+          Repeater {
+            model: root.remoteWidgets
+            delegate: Rectangle {
+              required property var modelData; required property int index
+              width: parent.width; height: Math.round(42*Style.uiScaleRatio)
+              color: dlHov.containsMouse?Qt.alpha(Color.mOnSurface,0.06):"transparent"
+              Behavior on color { ColorAnimation { duration: 80 } }
+              RowLayout {
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: Style.marginM; rightMargin: Style.marginS } spacing: Style.marginS
+                NIcon { icon: modelData.iconFallback || "puzzle"; pointSize: Style.fontSizeL; applyUiScale: false; color: Color.mOnSurfaceVariant; opacity: 0.7 }
+                NText { Layout.fillWidth: true; text: modelData.name; pointSize: Style.fontSizeS; color: Color.mOnSurfaceVariant }
+                NText { text: modelData.version || ""; pointSize: Style.fontSizeXXS; color: Color.mOnSurfaceVariant; opacity: 0.5 }
+                // Download button
+                Rectangle {
+                  width: Math.round(28*Style.uiScaleRatio); height: width; radius: Style.radiusS
+                  color: dlBtn.containsMouse?Qt.alpha(Color.mPrimary,0.18):"transparent"; Behavior on color{ColorAnimation{duration:80}}
+                  NIcon { anchors.centerIn: parent; icon: "download"; pointSize: Style.fontSizeM; applyUiScale: false; color: dlBtn.containsMouse?Color.mPrimary:Color.mOnSurfaceVariant; Behavior on color{ColorAnimation{duration:80}} }
+                  MouseArea { id: dlBtn; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.installWidget(modelData); onEntered: TooltipService.show(parent,"Install "+modelData.name); onExited: TooltipService.hide() }
+                }
+              }
+              MouseArea { id: dlHov; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+            }
+          }
+
+          // Empty state when no remote widgets and not fetching
+          Rectangle {
+            visible: root.widgetMenuOpen && root.remoteWidgets.length === 0 && !root.fetchingRegistry && root.widgetSources.length > 0
+            width: parent.width; height: Math.round(36*Style.uiScaleRatio); color: "transparent"
+            NText { anchors.centerIn: parent; text: "No new widgets available"; pointSize: Style.fontSizeXS; color: Color.mOnSurfaceVariant; opacity: 0.6 }
+          }
+        }
+
+        // Settings panel  -  widget sources
+        Rectangle { width: parent.width; height: 1; visible: root.settingsPanelOpen; color: Color.mOutline; opacity: 0.5 }
+        Column {
+          visible: root.settingsPanelOpen; width: parent.width; spacing: 0
+          padding: Style.marginS
+
+          // Sources list
+          Repeater {
+            model: root.widgetSources
+            delegate: RowLayout {
+              required property var modelData; required property int index
+              width: parent.width - Style.marginS*2; spacing: Style.marginXS
+              NIcon { icon: "source-code"; pointSize: Style.fontSizeM; applyUiScale: false; color: Color.mOnSurfaceVariant }
+              ColumnLayout { Layout.fillWidth: true; spacing: 0
+                NText { text: modelData.name; pointSize: Style.fontSizeS; color: Color.mOnSurface }
+                NText { text: modelData.url; pointSize: Style.fontSizeXXS; color: Color.mOnSurfaceVariant; elide: Text.ElideRight; Layout.fillWidth: true }
+              }
+              Rectangle {
+                width: Math.round(26*Style.uiScaleRatio); height: width; radius: Style.radiusS
+                color: srcTrash.containsMouse?Qt.alpha(Color.mError,0.15):"transparent"; Behavior on color{ColorAnimation{duration:80}}
+                NIcon { anchors.centerIn: parent; icon: "trash"; pointSize: Style.fontSizeS; applyUiScale: false; color: srcTrash.containsMouse?Color.mError:Color.mOnSurfaceVariant }
+                MouseArea { id: srcTrash; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeWidgetSource(modelData.url) }
+              }
+            }
+          }
+
+          // Add source form
+          RowLayout {
+            width: parent.width - Style.marginS*2; spacing: Style.marginXS
+
+            ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXXS
+              TextField {
+                id: srcNameField; Layout.fillWidth: true; placeholderText: "Source name"
+                placeholderTextColor: Color.mSecondary
+                font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+              }
+              TextField {
+                id: srcUrlField; Layout.fillWidth: true; placeholderText: "https://github.com/user/repo"
+                placeholderTextColor: Color.mSecondary
+                font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+              }
+            }
+
+            Rectangle {
+              width: Math.round(30*Style.uiScaleRatio); height: width; radius: Style.radiusS
+              color: addBtn.containsMouse?Qt.alpha(Color.mPrimary,0.18):"transparent"; Behavior on color{ColorAnimation{duration:80}}
+              NIcon { anchors.centerIn: parent; icon: "plus"; pointSize: Style.fontSizeM; applyUiScale: false; color: addBtn.containsMouse?Color.mPrimary:Color.mOnSurfaceVariant }
+              MouseArea { id: addBtn; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (srcNameField.text.trim() && srcUrlField.text.trim()) {
+                    root.addWidgetSource(srcNameField.text, srcUrlField.text);
+                    srcNameField.text = ""; srcUrlField.text = "";
+                  }
+                }
+              }
             }
           }
         }

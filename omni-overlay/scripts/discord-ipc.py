@@ -34,8 +34,8 @@ def _log(*args):
     _logfile.flush()
 
 SOCKET_NAMES = ["discord-ipc-0", "discord-ipc-1", "discord-ipc-2"]
-TOKEN_PATH = os.path.expanduser("~/.local/share/omni/omni-overlay/discord-auth.json")
-CONFIG_PATH = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "config.json"))
+TOKEN_PATH  = os.path.expanduser("~/.config/omni-overlay/discord/auth.json")
+CONFIG_PATH = os.path.expanduser("~/.config/omni-overlay/discord/config.json")
 SCOPES = ["rpc", "rpc.voice.write"]
 
 _event_queue = collections.deque(maxlen=64)
@@ -237,13 +237,7 @@ def main():
     client_secret = config.get("discord_client_secret", "").strip()
 
     if not client_id or not client_secret:
-        emit("needs_setup", {
-            "message": (
-                "Add discord_client_id and discord_client_secret to "
-                "~/.config/omni/plugins/omni-overlay/config.json. "
-                "Get them at discord.com/developers/applications (enable RPC)."
-            )
-        })
+        emit("needs_setup", {"message": "credentials_missing"})
         sys.exit(0)
 
     sock_path = find_socket()

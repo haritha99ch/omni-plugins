@@ -60,19 +60,8 @@ NIconButton {
 
   onClicked: {
     if (mainInstance) {
-      if (overlayActive) {
-        mainInstance.closeOmniOverlay();
-        // Also turn off bar override if it was on
-        if (BarService.workspaceBarOverride) {
-          BarService.workspaceBarOverride = false;
-        }
-      } else {
-        if (!BarService.workspaceBarOverride) {
-          BarService.workspaceBarOverride = true;
-        } else {
-          mainInstance.openOmniOverlay();
-        }
-      }
+      if (overlayActive) mainInstance.closeOmniOverlay();
+      else mainInstance.openOmniOverlay();
     }
   }
 

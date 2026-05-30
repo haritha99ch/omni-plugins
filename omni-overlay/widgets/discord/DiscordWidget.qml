@@ -38,7 +38,31 @@ Item {
     return voiceChannelName !== "" ? voiceChannelName : "Connected  -  no voice channel";
   }
 
+  property bool settingsOpen: false
+
   onPluginApiChanged: { if (pluginApi) _startBridge(); }
+
+  // Writes discord credentials to ~/.config/omni-overlay/discord/config.json
+  Process {
+    id: configSaver
+    running: false
+    stdinEnabled: true
+    command: ["python3", "-c",
+      "import json,os,sys; d=json.loads(sys.stdin.readline()); p=os.path.expanduser('~/.config/omni-overlay/discord/config.json'); os.makedirs(os.path.dirname(p),exist_ok=True); open(p,'w').write(json.dumps(d,indent=2))"]
+    onExited: function(code) {
+      if (code === 0) {
+        root.settingsOpen = false;
+        if (bridge.running) bridge.running = false;
+        Qt.callLater(function(){ root._startBridge(); });
+      }
+    }
+  }
+
+  function saveCredentials(clientId, secret) {
+    if (!clientId.trim() || !secret.trim()) return;
+    configSaver.running = true;
+    configSaver.write(JSON.stringify({ discord_client_id: clientId.trim(), discord_client_secret: secret.trim() }) + "\n");
+  }
 
   Process {
     id: bridge
@@ -221,7 +245,7 @@ Item {
             font.weight: Style.fontWeightSemiBold
             color: root.discordConnected ? Color.mOnSurface : Color.mOnSurfaceVariant; elide: Text.ElideRight }
           Row {
-            visible: root.discordConnected && !root.discordNeedsSetup; spacing: 2
+            visible: root.discordConnected && !root.discordNeedsSetup && !root.settingsOpen; spacing: 2
             Repeater {
               model: ["Voice", "Browse"]
               delegate: Rectangle {
@@ -236,13 +260,69 @@ Item {
               }
             }
           }
+          NIconButton {
+            visible: root.panelsVisible
+            icon: "settings"
+            baseSize: Style.baseWidgetSize * 0.75
+            colorFg: root.settingsOpen ? Color.mPrimary : Color.mOnSurfaceVariant
+            colorBg: root.settingsOpen ? Qt.alpha(Color.mPrimary, 0.12) : "transparent"
+            onClicked: root.settingsOpen = !root.settingsOpen
+          }
         }
 
-        NText { visible: root.panelsVisible && root.discordNeedsSetup; Layout.fillWidth: true
-          text: "1. discord.com/developers/applications\n2. Create app -> enable RPC\n3. Add client_id + client_secret to\n   omni-overlay/config.json"
-          pointSize: Style.fontSizeXS; color: Color.mOnSurfaceVariant; wrapMode: Text.WordWrap }
-        NText { visible: root.panelsVisible && root.discordNeedsAuth && !root.discordNeedsSetup; Layout.fillWidth: true
-          text: "Approve in Discord's authorization dialog"
+        // Credential setup form
+        ColumnLayout {
+          visible: root.panelsVisible && (root.discordNeedsSetup || root.settingsOpen)
+          Layout.fillWidth: true; spacing: Style.marginS
+
+          NText {
+            visible: root.discordNeedsSetup
+            Layout.fillWidth: true
+            text: "Discord credentials required.\nCreate an app at discord.com/developers/applications,\nenable RPC, then enter the credentials below."
+            pointSize: Style.fontSizeXS; color: Color.mOnSurfaceVariant; wrapMode: Text.WordWrap
+          }
+
+          ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXS
+            NText { text: "Client ID"; pointSize: Style.fontSizeXS; color: Color.mOnSurfaceVariant }
+            TextField {
+              id: clientIdField; Layout.fillWidth: true
+              placeholderText: "000000000000000000"
+              placeholderTextColor: Color.mSecondary
+              font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+              background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+            }
+          }
+
+          ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXS
+            NText { text: "Client Secret"; pointSize: Style.fontSizeXS; color: Color.mOnSurfaceVariant }
+            TextField {
+              id: clientSecretField; Layout.fillWidth: true
+              placeholderText: "xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+              placeholderTextColor: Color.mSecondary
+              echoMode: TextInput.Password
+              font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+              background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+            }
+          }
+
+          RowLayout { Layout.fillWidth: true; spacing: Style.marginXS
+            Item { Layout.fillWidth: true }
+            NIconButton {
+              visible: !root.discordNeedsSetup
+              icon: "x"; baseSize: Style.baseWidgetSize * 0.8
+              onClicked: root.settingsOpen = false
+            }
+            NIconButton {
+              icon: "check"; baseSize: Style.baseWidgetSize * 0.8
+              colorFg: Color.mPrimary; colorBg: Qt.alpha(Color.mPrimary, 0.12)
+              enabled: clientIdField.text.trim() !== "" && clientSecretField.text.trim() !== ""
+              onClicked: root.saveCredentials(clientIdField.text, clientSecretField.text)
+            }
+          }
+        }
+
+        NText { visible: root.panelsVisible && root.discordNeedsAuth && !root.discordNeedsSetup && !root.settingsOpen
+          Layout.fillWidth: true; text: "Approve in Discord's authorization dialog"
           pointSize: Style.fontSizeXS; color: Color.mOnSurfaceVariant; wrapMode: Text.WordWrap }
 
         ColumnLayout {
