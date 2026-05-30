@@ -1,0 +1,9 @@
+{
+  "id": "performance",
+  "name": "Performance",
+  "file": "PerformanceWidget.qml",
+  "iconSrc": "file:///usr/share/icons/breeze/apps/48/utilities-system-monitor.svg",
+  "iconFallback": "device-analytics",
+  "defaultX": "left",
+  "defaultY": 50
+}

@@ -1,0 +1,9 @@
+{
+  "id": "obs",
+  "name": "OBS Studio",
+  "file": "ObsWidget.qml",
+  "iconSrc": "file:///usr/share/icons/hicolor/scalable/apps/com.obsproject.Studio.svg",
+  "iconFallback": "brand-youtube",
+  "defaultX": "right",
+  "defaultY": "bottom"
+}

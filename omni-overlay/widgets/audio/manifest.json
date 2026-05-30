@@ -1,0 +1,9 @@
+{
+  "id": "audio",
+  "name": "Audio",
+  "file": "AudioWidget.qml",
+  "iconSrc": "file:///usr/share/icons/breeze/apps/48/multimedia-volume-control.svg",
+  "iconFallback": "settings-audio",
+  "defaultX": "left",
+  "defaultY": "bottom"
+}
