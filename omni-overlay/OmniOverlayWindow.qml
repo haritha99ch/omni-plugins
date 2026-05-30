@@ -103,9 +103,27 @@ PanelWindow {
   }
 
   function installWidget(remoteWidget) {
-    var proc = widgetInstallerTemplate.createObject(root, {
-      widgetId:  remoteWidget.id,
-      sourceUrl: remoteWidget.sourceUrl
+    if (!pluginApi) return;
+    var wid = remoteWidget.id;
+    var src = remoteWidget.sourceUrl;
+    var dst = pluginApi.pluginDir + "/widgets";
+    var repo = src.split("/").pop();
+    var cmd = "mkdir -p '" + dst + "/" + wid + "' && " +
+              "curl -sL '" + src + "/archive/refs/heads/main.tar.gz' | " +
+              "tar -xzf - --strip-components=2 -C '" + dst + "/" + wid + "/' '" + repo + "-main/" + wid + "/'";
+
+    var proc = Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["sh", "-c", "' + cmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"] }',
+      root, "WidgetInstaller_" + wid);
+    if (!proc) { Logger.e("OmniOverlay", "installWidget: createObject failed"); return; }
+    proc.exited.connect(function(code) {
+      if (code === 0) {
+        root.remoteWidgets = root.remoteWidgets.filter(function(w){ return w.id !== wid; });
+        root._discoverWidgets();
+      } else {
+        Logger.e("OmniOverlay", "Widget install failed:", wid, "code:", code);
+      }
+      proc.destroy();
     });
     proc.running = true;
   }
@@ -145,10 +163,9 @@ PanelWindow {
       property string sourceUrl: ""
       stdinEnabled: false
       command: ["sh", "-c",
-        "tmp=$(mktemp -d) && " +
-        "git clone --filter=blob:none --sparse --depth=1 '" + sourceUrl + "' \"$tmp\" -q 2>/dev/null && " +
-        "git -C \"$tmp\" sparse-checkout set --no-cone /registry.json -q 2>/dev/null && " +
-        "cat \"$tmp/registry.json\"; rm -rf \"$tmp\""]
+        "tmp=$(mktemp -d) && GIT_TERMINAL_PROMPT=0 git clone --filter=blob:none --sparse --depth=1 --quiet '" + sourceUrl + "' \"$tmp\" 2>/dev/null && " +
+        "cd \"$tmp\" && git sparse-checkout set --no-cone /registry.json 2>/dev/null && " +
+        "tr -d '\\n\\r' < \"$tmp/registry.json\" && echo; rm -rf \"$tmp\""]
       stdout: SplitParser {
         onRead: function(line) {
           line = line.trim();
@@ -157,36 +174,10 @@ PanelWindow {
             var reg = JSON.parse(line);
             var widgets = reg.widgets || [];
             var toAdd = widgets.filter(function(w){ return !root.isWidgetInstalled(w.id); });
-            toAdd.forEach(function(w){ w.sourceUrl = parent.parent.sourceUrl; });
+            toAdd.forEach(function(w){ w.sourceUrl = sourceUrl; });
             root.remoteWidgets = root.remoteWidgets.concat(toAdd);
           } catch(e) {}
         }
-      }
-    }
-  }
-
-  // Widget installer — clones specific widget folder from source
-  Component {
-    id: widgetInstallerTemplate
-    Process {
-      property string widgetId: ""
-      property string sourceUrl: ""
-      readonly property string _widgetsDir: root.pluginApi ? root.pluginApi.pluginDir + "/widgets" : ""
-      command: ["sh", "-c",
-        "tmp=$(mktemp -d) && " +
-        "git clone --filter=blob:none --sparse --depth=1 '" + sourceUrl + "' \"$tmp\" -q 2>/dev/null && " +
-        "git -C \"$tmp\" sparse-checkout set --no-cone '" + widgetId + "' -q 2>/dev/null && " +
-        "mkdir -p '" + _widgetsDir + "' && " +
-        "cp -r \"$tmp/" + widgetId + "/.\" '" + _widgetsDir + "/" + widgetId + "/'; " +
-        "rm -rf \"$tmp\""]
-      onExited: function(code) {
-        if (code === 0) {
-          root.remoteWidgets = root.remoteWidgets.filter(function(w){ return w.id !== widgetId; });
-          root._widgetsLoaded = false;
-          root._positionsInitialized = false;
-          root._discoverWidgets();
-        }
-        destroy();
       }
     }
   }
@@ -294,6 +285,7 @@ PanelWindow {
   }
 
   function _loadWidget(manifest) {
+    if (root.widgetInstances[manifest.id]) return;  // already loaded, skip
     var widgetPath = root.pluginApi.pluginDir + "/widgets/" + manifest.id + "/" + manifest.file;
     var comp = Qt.createComponent("file://" + widgetPath);
     var doCreate = function() {
@@ -301,19 +293,19 @@ PanelWindow {
         Logger.e("OmniOverlay", "Widget load error [" + manifest.id + "]:", comp.errorString());
         return;
       }
+      if (root.widgetInstances[manifest.id]) return;  // guard against async double-load
       var inst = comp.createObject(widgetContainer, {
         pluginApi: Qt.binding(function(){ return root.pluginApi; }),
         panelsVisible: Qt.binding(function(){ return root.panelsVisible; }),
         visible: root.panelsVisible && (root.widgetVisible[manifest.id] ?? true)
       });
       if (!inst) { Logger.e("OmniOverlay", "Widget createObject failed:", manifest.id); return; }
-      // Absorb clicks on the widget background so they don't reach the dim's dismiss MouseArea
       Qt.createQmlObject('import QtQuick; MouseArea { anchors.fill: parent; z: -1; acceptedButtons: Qt.AllButtons }', inst, "ClickAbsorber");
-      // Inject drag
       _attachDrag(inst, manifest.id);
       var insts = Object.assign({}, root.widgetInstances);
       insts[manifest.id] = inst;
       root.widgetInstances = insts;
+      _syncWidgetVisibility();  // ensure new widget gets correct visibility immediately
     };
     if (comp.status === Component.Ready) doCreate();
     else if (comp.status === Component.Error) doCreate();
