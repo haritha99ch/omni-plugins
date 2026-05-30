@@ -52,7 +52,41 @@ PanelWindow {
   property int  pillMode: 0
   property bool widgetMenuOpen: false
   property bool settingsPanelOpen: false
+  property bool shortcutsPanelOpen: false
   property var  recentGames: []
+
+  // Custom shortcuts  [{name, command, icon}]
+  property var customShortcuts: []
+
+  function _saveShortcuts() {
+    if (!pluginApi) return;
+    var s = Object.assign({}, pluginApi.pluginSettings);
+    s.customShortcuts = root.customShortcuts;
+    pluginApi.pluginSettings = s;
+    pluginApi.saveSettings();
+  }
+
+  function addShortcut(name, command, icon) {
+    if (!name.trim() || !command.trim()) return;
+    root.customShortcuts = root.customShortcuts.concat([{
+      name: name.trim(), command: command.trim(), icon: icon.trim() || "terminal-2"
+    }]);
+    _saveShortcuts();
+  }
+
+  function removeShortcut(index) {
+    var arr = root.customShortcuts.slice();
+    arr.splice(index, 1);
+    root.customShortcuts = arr;
+    _saveShortcuts();
+  }
+
+  function launchShortcut(command) {
+    var escaped = command.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["sh","-c","' + escaped + '"]; running: true }',
+      root, "Shortcut");
+  }
 
   // Widget source / marketplace
   property var widgetSources: []        // [{name, url}]  -  persisted
@@ -152,7 +186,8 @@ PanelWindow {
     if (s.widgetVisible)  root.widgetVisible  = Object.assign({}, s.widgetVisible);
     if (s.widgetPinned)   root.widgetPinned   = Object.assign({}, s.widgetPinned);
     if (s.pillMode !== undefined) root.pillMode = s.pillMode;
-    if (s.widgetSources)  root.widgetSources  = s.widgetSources.slice();
+    if (s.widgetSources)    root.widgetSources    = s.widgetSources.slice();
+    if (s.customShortcuts)  root.customShortcuts  = s.customShortcuts.slice();
     Qt.callLater(fetchRemoteWidgets);
   }
 
@@ -499,10 +534,31 @@ PanelWindow {
               }
             }
 
-            // Shortcuts mode: recent game slots
+            // Shortcuts mode: recent Steam game slots
             ShortcutSlot { visible: root.pillMode===1; slotIndex: 0; slotLabel: "Game 1" }
             ShortcutSlot { visible: root.pillMode===1; slotIndex: 1; slotLabel: "Game 2" }
             ShortcutSlot { visible: root.pillMode===1; slotIndex: 2; slotLabel: "Game 3" }
+
+            // Custom shortcuts
+            Rectangle { visible: root.pillMode===1 && root.customShortcuts.length>0; width: 1; height: Math.round(30*Style.uiScaleRatio); color: Color.mOutline; opacity: 0.5; anchors.verticalCenter: parent?.verticalCenter }
+            Repeater {
+              model: root.pillMode===1 ? root.customShortcuts : []
+              delegate: PillBtn {
+                required property var modelData
+                fallbackIcon: modelData.icon || "terminal-2"
+                label: modelData.name
+                active: false
+                onClicked: root.launchShortcut(modelData.command)
+              }
+            }
+            PillBtn {
+              visible: root.pillMode===1
+              fallbackIcon: "plus"
+              label: "Add shortcut"
+              active: root.shortcutsPanelOpen
+              activeColor: Color.mPrimary
+              onClicked: root.shortcutsPanelOpen = !root.shortcutsPanelOpen
+            }
 
             Rectangle { width: 1; height: Math.round(30*Style.uiScaleRatio); color: Color.mOutline; opacity: 0.5; anchors.verticalCenter: parent?.verticalCenter }
             PillBtn { src: "file:///usr/share/icons/hicolor/48x48/apps/steam.png"; fallbackIcon: "brand-steam"; label: "Open Steam"; active: false; onClicked: Qt.openUrlExternally("steam://open/games") }
@@ -670,6 +726,64 @@ PanelWindow {
                     srcNameField.text = ""; srcUrlField.text = "";
                   }
                 }
+              }
+            }
+          }
+
+        }
+
+        // Shortcuts panel  -  toggled by "+" in shortcuts mode
+        Rectangle { width: parent.width; height: 1; visible: root.shortcutsPanelOpen; color: Color.mOutline; opacity: 0.5 }
+        Column {
+          visible: root.shortcutsPanelOpen; width: parent.width; spacing: 0; padding: Style.marginS
+
+          Repeater {
+            model: root.customShortcuts
+            delegate: RowLayout {
+              required property var modelData; required property int index
+              width: parent.width - Style.marginS*2; spacing: Style.marginXS
+              NIcon { icon: modelData.icon || "terminal-2"; pointSize: Style.fontSizeM; applyUiScale: false; color: Color.mOnSurface }
+              ColumnLayout { Layout.fillWidth: true; spacing: 0
+                NText { text: modelData.name; pointSize: Style.fontSizeS; color: Color.mOnSurface }
+                NText { text: modelData.command; pointSize: Style.fontSizeXXS; color: Color.mOnSurfaceVariant; elide: Text.ElideRight; Layout.fillWidth: true }
+              }
+              Rectangle {
+                width: Math.round(26*Style.uiScaleRatio); height: width; radius: Style.radiusS
+                color: scTrash.containsMouse?Qt.alpha(Color.mError,0.15):"transparent"; Behavior on color{ColorAnimation{duration:80}}
+                NIcon { anchors.centerIn: parent; icon: "trash"; pointSize: Style.fontSizeS; applyUiScale: false; color: scTrash.containsMouse?Color.mError:Color.mOnSurfaceVariant }
+                MouseArea { id: scTrash; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.removeShortcut(index) }
+              }
+            }
+          }
+
+          RowLayout {
+            width: parent.width - Style.marginS*2; spacing: Style.marginXS
+            ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXXS
+              RowLayout { Layout.fillWidth: true; spacing: Style.marginXXS
+                TextField {
+                  id: scNameField; Layout.fillWidth: true; placeholderText: "Name"
+                  placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                  background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+                }
+                TextField {
+                  id: scIconField; implicitWidth: Math.round(90*Style.uiScaleRatio); placeholderText: "icon"
+                  placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                  background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+                }
+              }
+              TextField {
+                id: scCmdField; Layout.fillWidth: true; placeholderText: "command or /path/to/script.sh"
+                placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+                onAccepted: { root.addShortcut(scNameField.text, scCmdField.text, scIconField.text); scNameField.text=""; scCmdField.text=""; scIconField.text=""; }
+              }
+            }
+            Rectangle {
+              width: Math.round(30*Style.uiScaleRatio); height: width; radius: Style.radiusS
+              color: scAddBtn.containsMouse?Qt.alpha(Color.mPrimary,0.18):"transparent"; Behavior on color{ColorAnimation{duration:80}}
+              NIcon { anchors.centerIn: parent; icon: "plus"; pointSize: Style.fontSizeM; applyUiScale: false; color: scAddBtn.containsMouse?Color.mPrimary:Color.mOnSurfaceVariant }
+              MouseArea { id: scAddBtn; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                onClicked: { root.addShortcut(scNameField.text, scCmdField.text, scIconField.text); scNameField.text=""; scCmdField.text=""; scIconField.text=""; }
               }
             }
           }
