@@ -41,16 +41,6 @@ bind = SUPER SHIFT, G, exec, hyprctl dispatch movetoworkspace special:overlay-ap
 # Float all windows in the overlay workspace
 windowrule = match:workspace special:overlay-apps, float true
 
-# Route polkit authentication dialogs into the overlay workspace
-# so they are interactable while the overlay is open.
-# Replace with your distro's polkit agent class if different.
-windowrule = match:class ^polkit-gnome-authentication-agent-1$, workspace special:overlay-apps
-```
-
-To find your polkit agent class:
-```bash
-hyprctl clients -j | python3 -c "import json,sys; [print(c['class']) for c in json.load(sys.stdin) if 'polkit' in c['class'].lower()]"
-```
 
 ### 3. Visual (optional but recommended, `hyprland.conf` or theme file)
 
