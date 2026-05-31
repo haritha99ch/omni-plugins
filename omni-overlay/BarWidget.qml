@@ -34,30 +34,19 @@ Item {
 
   ListModel { id: overlayAppsModel }
 
-  // Normalize access — Omni build uses ListModel (.count/.get), vanilla uses plain array (.length/[i])
-  function _winCount() {
-    var ws = CompositorService.windows;
-    return (ws.count !== undefined) ? ws.count : (ws.length || 0);
-  }
-  function _winGet(i) {
-    var ws = CompositorService.windows;
-    return (ws.get !== undefined) ? ws.get(i) : ws[i];
-  }
-
   function _refreshOverlayApps() {
     overlayAppsModel.clear();
-    var n = _winCount();
-    for (var i = 0; i < n; i++) {
-      var w = _winGet(i);
+    var ws = CompositorService.windows;
+    for (var i = 0; i < ws.length; i++) {
+      var w = ws[i];
       if (w && w.workspaceName === "special:overlay-apps" && w.title !== "overlay-placeholder")
         overlayAppsModel.append({ appId: w.appId || w.class || "", winTitle: w.title || "", winIndex: i });
     }
   }
 
   Connections {
-    target: CompositorService.windows
-    function onCountChanged() { root._refreshOverlayApps(); }
-    function onLengthChanged() { root._refreshOverlayApps(); }
+    target: CompositorService
+    function onWindowListChanged() { root._refreshOverlayApps(); }
   }
   Component.onCompleted: _refreshOverlayApps()
 
@@ -160,7 +149,7 @@ Item {
             cursorShape: Qt.PointingHandCursor
             hoverEnabled: true
             onClicked: {
-              var w = root._winGet(modelData.winIndex);
+              var w = CompositorService.windows[modelData.winIndex];
               if (w) CompositorService.focusWindow(w);
             }
             onEntered: TooltipService.show(parent, modelData.winTitle)
