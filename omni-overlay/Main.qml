@@ -58,7 +58,7 @@ Item {
     if (_overlayComponent.status === Component.Error) {
       Logger.e("OmniOverlay", "load error:", _overlayComponent.errorString()); return;
     }
-    var win = _overlayComponent.createObject(null, { screen: screen, pluginApi: pluginApi });
+    var win = _overlayComponent.createObject(null, { screen: screen, pluginApi: pluginApi, panelsVisible: false });
     Logger.i("OmniOverlay", "window created:", win !== null, "screen:", screen?.name);
     if (!win) return;
     var wins = Object.assign({}, root._windows);
@@ -66,7 +66,7 @@ Item {
     root._windows = wins;
     _setActiveWindow(win);
     win.positionSaved.connect(function(key, x, y) { _savePos(key, x, y); });
-    if (!root.overlayActive) win.panelsVisible = false;
+    win.panelsVisible = root.overlayActive;
   }
 
   function closeOmniOverlay() {

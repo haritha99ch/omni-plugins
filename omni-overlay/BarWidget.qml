@@ -1,16 +1,18 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
+import Quickshell.Widgets
 import qs.Commons
+import qs.Services.Compositor
 import qs.Services.UI
 import qs.Widgets
 
-NIconButton {
+Item {
   id: root
 
   property ShellScreen screen
   property var pluginApi: null
 
-  // Standard bar widget properties
   property string widgetId: ""
   property string section: ""
   property string configSection: section
@@ -21,69 +23,139 @@ NIconButton {
   readonly property string screenName: screen ? screen.name : ""
   property var widgetSettings: Settings.getBarWidgetSettingsForScreen(screenName, configSection || section, sectionWidgetIndex)
 
-  // Access state from Main.qml via mainInstance
-  readonly property var mainInstance: pluginApi?.mainInstance ?? null
-  readonly property bool overlayActive: mainInstance?.overlayActive ?? false
-  readonly property var discordWidget: mainInstance?._overlayWindow?.getWidget("discord") ?? null
+  readonly property var mainInstance:    pluginApi?.mainInstance ?? null
+  readonly property bool overlayActive:  mainInstance?.overlayActive ?? false
+  readonly property var discordWidget:   mainInstance?._overlayWindow?.getWidget("discord") ?? null
   readonly property bool discordConnected: discordWidget?.discordConnected ?? false
   readonly property bool anySpeaking: {
     if (!discordWidget?.voiceParticipants) return false;
-    return discordWidget.voiceParticipants.some(function (p) { return p.speaking; });
+    return discordWidget.voiceParticipants.some(function(p){ return p.speaking; });
   }
 
-  icon: "device-gamepad-2"
-  tooltipText: overlayActive ? "Close Omni Overlay" : "Open Omni Overlay (Super+G)"
-  tooltipDirection: "bar"
-  baseSize: Style.getCapsuleHeightForScreen(screen?.name)
-  applyUiScale: false
-  customRadius: Style.radiusL
+  ListModel { id: overlayAppsModel }
 
-  // Pulse primary color when someone is speaking in Discord voice
-  colorBg: anySpeaking ? Qt.alpha(Color.mPrimary, 0.2) : Style.capsuleColor
-  colorFg: overlayActive ? Color.mPrimary : Color.mOnSurface
-
-  border.color: overlayActive ? Qt.alpha(Color.mPrimary, 0.5) : Style.capsuleBorderColor
-  border.width: Style.capsuleBorderWidth
-
-  // Small indicator dot when Discord is connected
-  Rectangle {
-    visible: discordConnected
-    width: 6
-    height: 6
-    radius: 3
-    color: anySpeaking ? Color.mPrimary : Color.mOnSurfaceVariant
-    anchors.top: parent.top
-    anchors.right: parent.right
-    anchors.topMargin: 4
-    anchors.rightMargin: 4
-  }
-
-  onClicked: {
-    if (mainInstance) {
-      if (overlayActive) mainInstance.closeOmniOverlay();
-      else mainInstance.openOmniOverlay();
+  function _refreshOverlayApps() {
+    overlayAppsModel.clear();
+    for (var i = 0; i < CompositorService.windows.count; i++) {
+      var w = CompositorService.windows.get(i);
+      if (w.workspaceName === "special:overlay-apps" && w.title !== "overlay-placeholder")
+        overlayAppsModel.append({ appId: w.appId || w.class || "", winTitle: w.title || "", winIndex: i });
     }
   }
 
-  NPopupContextMenu {
-    id: contextMenu
-    model: [
-      {
-        "label": I18n.tr("actions.widget-settings"),
-        "action": "widget-settings",
-        "icon": "settings"
-      }
-    ]
-    onTriggered: action => {
-                   contextMenu.close();
-                   PanelService.closeContextMenu(screen);
-                   if (action === "widget-settings") {
-                     BarService.openWidgetSettings(screen, configSection || section, sectionWidgetIndex, widgetId, widgetSettings);
-                   }
-                 }
+  Connections {
+    target: CompositorService.windows
+    function onCountChanged() { root._refreshOverlayApps(); }
   }
+  Component.onCompleted: _refreshOverlayApps()
 
-  onRightClicked: {
-    PanelService.showContextMenu(contextMenu, root, screen);
+  readonly property real _capsuleH: Style.getCapsuleHeightForScreen(screen?.name)
+  readonly property real _iconSz: Math.round(_capsuleH * 0.55)
+
+  implicitWidth: capsule.implicitWidth
+  implicitHeight: _capsuleH
+
+  // Single grouped capsule containing game button + overlay app buttons
+  Rectangle {
+    id: capsule
+    anchors.centerIn: parent
+    implicitWidth: inner.implicitWidth + Style.marginS * 2
+    height: root._capsuleH
+    radius: Style.radiusM
+    color: Style.capsuleColor
+    border.color: anySpeaking ? Qt.alpha(Color.mPrimary, 0.5)
+                 : overlayActive ? Qt.alpha(Color.mPrimary, 0.5)
+                 : Style.capsuleBorderColor
+    border.width: Style.capsuleBorderWidth
+    Behavior on border.color { ColorAnimation { duration: 150 } }
+
+    RowLayout {
+      id: inner
+      anchors.centerIn: parent
+      spacing: 0
+
+      // Game controller icon
+      Item {
+        Layout.preferredWidth: root._capsuleH
+        Layout.preferredHeight: root._capsuleH
+
+        NIcon {
+          anchors.centerIn: parent
+          icon: "device-gamepad-2"
+          pointSize: root._iconSz * 0.85
+          applyUiScale: false
+          color: overlayActive ? Color.mPrimary
+               : anySpeaking  ? Color.mPrimary
+               : Color.mOnSurface
+          Behavior on color { ColorAnimation { duration: 120 } }
+        }
+
+        Rectangle {
+          visible: discordConnected
+          width: 6; height: 6; radius: 3
+          color: anySpeaking ? Color.mPrimary : Color.mOnSurfaceVariant
+          anchors.top: parent.top; anchors.right: parent.right
+          anchors.topMargin: 4; anchors.rightMargin: 4
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            if (mainInstance) {
+              if (overlayActive) mainInstance.closeOmniOverlay();
+              else mainInstance.openOmniOverlay();
+            }
+          }
+          onPressAndHold: PanelService.showContextMenu(ctxMenu, parent, screen)
+        }
+
+        NPopupContextMenu {
+          id: ctxMenu
+          model: [{ "label": I18n.tr("actions.widget-settings"), "action": "widget-settings", "icon": "settings" }]
+          onTriggered: action => {
+            ctxMenu.close(); PanelService.closeContextMenu(screen);
+            if (action === "widget-settings")
+              BarService.openWidgetSettings(screen, configSection || section, sectionWidgetIndex, widgetId, widgetSettings);
+          }
+        }
+      }
+
+      // Divider — only when there are overlay apps
+      Rectangle {
+        visible: overlayAppsModel.count > 0
+        width: 1; height: Math.round(root._capsuleH * 0.55)
+        color: Color.mOutline; opacity: 0.5
+      }
+
+      // Overlay app buttons
+      Repeater {
+        model: overlayAppsModel
+        delegate: Item {
+          required property var modelData
+          Layout.preferredWidth: root._capsuleH
+          Layout.preferredHeight: root._capsuleH
+
+          IconImage {
+            anchors.centerIn: parent
+            width: root._iconSz; height: root._iconSz
+            source: "image://icon/" + (modelData.appId || "application-x-executable")
+            smooth: true; asynchronous: true
+          }
+
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: {
+              var w = CompositorService.windows.get(modelData.winIndex);
+              if (w) CompositorService.focusWindow(w);
+            }
+            onEntered: TooltipService.show(parent, modelData.winTitle)
+            onExited: TooltipService.hide()
+          }
+        }
+      }
+    }
   }
 }

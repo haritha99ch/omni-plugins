@@ -30,15 +30,29 @@ PanelWindow {
   color: "transparent"
 
   mask: Region {
-    x: root.clickThrough ? islandBg.x : 0
-    y: root.clickThrough ? islandBg.y : 0
-    width: root.panelsVisible ? (root.clickThrough ? islandBg.width : root.width) : 0
-    height: root.panelsVisible ? (root.clickThrough ? islandBg.height : root.height) : 0
+    // Island + widget panels only — apps in special:overlay-apps are always reachable.
+
+    // Island
+    Region {
+      x: islandBg.x; y: islandBg.y
+      width: root.panelsVisible ? islandBg.width : 0
+      height: root.panelsVisible ? islandBg.height : 0
+    }
+
+    // Widget slots — bound by manifest index, no widget IDs hardcoded
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[0]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[1]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[2]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[3]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[4]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[5]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[6]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
+    Region { readonly property var _i: root.widgetInstances[root.widgetManifests[7]?.id]; x: _i?.x??0; y: _i?.y??0; width: (_i?.visible&&root.panelsVisible)?(_i.width??0):0; height: (_i?.visible&&root.panelsVisible)?(_i.height??0):0 }
   }
 
-  property bool panelsVisible: true
+  property bool panelsVisible: false
   property bool showVoiceHud: false  // set by Main.qml  -  only the last-active screen shows voice HUD on close
-  property bool clickThrough: false  // when true: island stays interactive, everything else passes clicks to game
+  property bool clickThrough: false  // toggles special_fallthrough via hyprctl — allows interacting with regular workspace behind overlay-apps
 
   // Widget registry (discovered at runtime)
   property var widgetManifests: []    // [{id, name, file, iconSrc, iconFallback, defaultX, defaultY}]
@@ -66,10 +80,13 @@ PanelWindow {
     pluginApi.saveSettings();
   }
 
+
   function addShortcut(name, command, icon) {
     if (!name.trim() || !command.trim()) return;
     root.customShortcuts = root.customShortcuts.concat([{
-      name: name.trim(), command: command.trim(), icon: icon.trim() || "terminal-2"
+      name: name.trim(), command: command.trim(),
+      icon: icon || "terminal-2",
+      overlay: true
     }]);
     _saveShortcuts();
   }
@@ -81,11 +98,81 @@ PanelWindow {
     _saveShortcuts();
   }
 
-  function launchShortcut(command) {
-    var escaped = command.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  function _resolveCommand(cmd) {
+    if (cmd.endsWith(".desktop")) {
+      var appId = cmd.replace(/.*\//, "").replace(/\.desktop$/, "");
+      return "gtk-launch " + appId;
+    }
+    return cmd;
+  }
+
+  // Resolve name/icon from .desktop then call callback(name, iconSrc)
+  function _resolveDesktop(cmd, name, icon, callback) {
+    if (!cmd.trim().endsWith(".desktop") || (name.trim() && icon.trim())) {
+      callback(name, icon); return;
+    }
+    var script =
+      "name=$(grep -m1 '^Name=' '" + cmd.trim() + "' | cut -d= -f2-); " +
+      "ico=$(grep -m1 '^Icon=' '" + cmd.trim() + "' | cut -d= -f2-); " +
+      "echo \"$name\"; " +
+      "if [ -f \"$ico\" ]; then echo \"file://$ico\"; " +
+      "else " +
+      "  found=''; " +
+      "  for size in 256 128 64 48 32 scalable; do " +
+      "    for ext in png svg xpm; do " +
+      "      f=\"/usr/share/icons/hicolor/$size/apps/$ico.$ext\"; " +
+      "      [ -f \"$f\" ] && found=\"$f\" && break 2; " +
+      "    done; " +
+      "  done; " +
+      "  [ -z \"$found\" ] && found=$(find /usr/share/pixmaps -maxdepth 1 -name \"$ico.*\" 2>/dev/null | head -1); " +
+      "  [ -n \"$found\" ] && echo \"file://$found\" || echo \"$ico\"; " +
+      "fi";
+    var reader = Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["sh","-c","' + script.replace(/"/g, '\\"') + '"]; running: true; stdout: StdioCollector {} }',
+      root, "DesktopResolver");
+    reader.exited.connect(function() {
+      var lines = reader.stdout.text.trim().split("\n");
+      var resolvedName = name.trim() || (lines[0] ? lines[0].trim() : cmd.replace(/.*\//, "").replace(/\.desktop$/, ""));
+      var resolvedIcon = icon.trim() || (lines[1] ? lines[1].trim() : "app-window");
+      reader.destroy();
+      callback(resolvedName, resolvedIcon);
+    });
+  }
+
+  function launchShortcut(shortcut) {
+    var cmd = _resolveCommand(shortcut.command);
+    if (shortcut.overlay) {
+      _launchInOverlay(cmd);
+    } else {
+      var escaped = cmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      Qt.createQmlObject(
+        'import QtQuick; import Quickshell.Io; Process { command: ["sh","-c","' + escaped + '"]; running: true }',
+        root, "Shortcut");
+    }
+  }
+
+  function _launchInOverlay(command) {
     Qt.createQmlObject(
-      'import QtQuick; import Quickshell.Io; Process { command: ["sh","-c","' + escaped + '"]; running: true }',
-      root, "Shortcut");
+      'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] ' + command.replace(/"/g, '\\"') + '"]; running: true }',
+      root, "OverlayShortcut");
+  }
+
+
+  function _toggleOverlayApps(shouldShow) {
+    var checker = Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","monitors","-j"]; running: true; stdout: StdioCollector {} }',
+      root, "MonCheck");
+    checker.exited.connect(function() {
+      try {
+        var monitors = JSON.parse(checker.stdout.text);
+        var isShowing = monitors.some(function(m){
+          return m.specialWorkspace && m.specialWorkspace.name === "special:overlay-apps";
+        });
+        if (shouldShow !== isShowing)
+          Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","togglespecialworkspace","overlay-apps"]; running: true }', root, "Toggle");
+      } catch(e) {}
+      checker.destroy();
+    });
   }
 
   // Widget source / marketplace
@@ -101,6 +188,8 @@ PanelWindow {
     if (!pluginApi) return;
     var s = Object.assign({}, pluginApi.pluginSettings);
     s.widgetSources = root.widgetSources;
+    // Remove so manifest default re-applies if list becomes empty
+    if (!root.widgetSources || root.widgetSources.length === 0) delete s.widgetSources;
     pluginApi.pluginSettings = s;
     pluginApi.saveSettings();
   }
@@ -176,7 +265,10 @@ PanelWindow {
     s.widgetVisible  = root.widgetVisible;
     s.widgetPinned   = root.widgetPinned;
     s.pillMode       = root.pillMode;
-    s.widgetSources  = root.widgetSources;
+    if (root.widgetSources && root.widgetSources.length > 0)
+      s.widgetSources = root.widgetSources;
+    else
+      delete s.widgetSources;
     pluginApi.pluginSettings = s;
     pluginApi.saveSettings();
   }
@@ -186,7 +278,7 @@ PanelWindow {
     if (s.widgetVisible)  root.widgetVisible  = Object.assign({}, s.widgetVisible);
     if (s.widgetPinned)   root.widgetPinned   = Object.assign({}, s.widgetPinned);
     if (s.pillMode !== undefined) root.pillMode = s.pillMode;
-    if (s.widgetSources)    root.widgetSources    = s.widgetSources.slice();
+    if (s.widgetSources)  root.widgetSources = s.widgetSources.slice();
     if (s.customShortcuts)  root.customShortcuts  = s.customShortcuts.slice();
     Qt.callLater(fetchRemoteWidgets);
   }
@@ -255,7 +347,14 @@ PanelWindow {
     var p = Object.assign({}, root.widgetPinned); p[id] = !(p[id] ?? true); root.widgetPinned = p;
   }
 
-  onPanelsVisibleChanged: { if (!panelsVisible) root.clickThrough = false; _syncWidgetVisibility(); }
+  onPanelsVisibleChanged: {
+    if (!panelsVisible) {
+      root.clickThrough = false;
+      Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","false"]; running: true }', root, "FallthroughReset");
+    }
+    _toggleOverlayApps(panelsVisible);
+    _syncWidgetVisibility();
+  }
   onShowVoiceHudChanged: _syncWidgetVisibility()
 
   function _syncWidgetVisibility() {
@@ -352,7 +451,7 @@ PanelWindow {
     var dh = Qt.createQmlObject('
       import QtQuick
       DragHandler {
-        acceptedModifiers: Qt.AltModifier
+        acceptedModifiers: Qt.NoModifier
         acceptedButtons: Qt.LeftButton
         target: null
         cursorShape: active ? Qt.SizeAllCursor : Qt.ArrowCursor
@@ -416,18 +515,6 @@ PanelWindow {
         try { var p = JSON.parse(text.trim()); if (Array.isArray(p)) root.recentGames = p; }
         catch(e) {}
       }
-    }
-  }
-
-  // Layer 1  -  Dim (behind widgets and island, darkens the game)
-  Rectangle {
-    anchors.fill: parent; color: "black"
-    opacity: root.panelsVisible ? 0.45 : 0.0
-    Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-    MouseArea {
-      anchors.fill: parent
-      enabled: root.panelsVisible && !root.clickThrough
-      onClicked: pluginApi?.mainInstance?.closeOmniOverlay()
     }
   }
 
@@ -515,7 +602,7 @@ PanelWindow {
         Item {
           width: parent.width; height: Math.round(51*Style.uiScaleRatio)
           Row {
-            id: ctrlInner; anchors.centerIn: parent; spacing: Style.marginXS
+            id: ctrlInner; anchors.centerIn: parent; spacing: Style.marginS
 
             // Mode toggle + widget menu
             PillBtn { src: root.pillMode===0?"file:///usr/share/icons/hicolor/scalable/apps/input-gaming.svg":""; fallbackIcon: root.pillMode===0?"device-gamepad-2":"home"; label: root.pillMode===0?"Shortcuts":"Home"; active: true; activeColor: Color.mPrimary; onClicked: root.pillMode=root.pillMode===0?1:0 }
@@ -545,10 +632,12 @@ PanelWindow {
               model: root.pillMode===1 ? root.customShortcuts : []
               delegate: PillBtn {
                 required property var modelData
-                fallbackIcon: modelData.icon || "terminal-2"
+                readonly property bool _isFileIcon: (modelData.icon||"").startsWith("file://") || (modelData.icon||"").startsWith("http") || (modelData.icon||"").startsWith("image://")
+                src: _isFileIcon ? modelData.icon : ""
+                fallbackIcon: _isFileIcon ? "" : (modelData.icon || "terminal-2")
                 label: modelData.name
                 active: false
-                onClicked: root.launchShortcut(modelData.command)
+                onClicked: root.launchShortcut(modelData)
               }
             }
             PillBtn {
@@ -576,7 +665,7 @@ PanelWindow {
               NText { anchors.verticalCenter: parent.verticalCenter; text: Math.round(BatteryService.batteryPercentage)+"%"; pointSize: Style.fontSizeL; font.weight: Style.fontWeightSemiBold; color: BatteryService.batteryPercentage<=BatteryService.criticalThreshold?Color.mError:"white" }
             }
 
-            // Click-through toggle
+            // Overlay apps toggle
             Rectangle { visible: root.pillMode===0; width: 1; height: Math.round(30*Style.uiScaleRatio); color: Color.mOutline; opacity: 0.5; anchors.verticalCenter: parent?.verticalCenter }
             PillBtn {
               visible: root.pillMode===0
@@ -584,7 +673,11 @@ PanelWindow {
               label: root.clickThrough ? "Click-through on" : "Click-through off"
               active: root.clickThrough
               activeColor: Color.mPrimary
-              onClicked: root.clickThrough = !root.clickThrough
+              onClicked: {
+                root.clickThrough = !root.clickThrough;
+                var val = root.clickThrough ? "true" : "false";
+                Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","' + val + '"]; running: true }', root, "Fallthrough");
+              }
             }
 
             // Widget settings
@@ -703,13 +796,13 @@ PanelWindow {
             ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXXS
               TextField {
                 id: srcNameField; Layout.fillWidth: true; placeholderText: "Source name"
-                placeholderTextColor: Color.mSecondary
+                placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6)
                 font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
                 background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
               }
               TextField {
                 id: srcUrlField; Layout.fillWidth: true; placeholderText: "https://github.com/user/repo"
-                placeholderTextColor: Color.mSecondary
+                placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6)
                 font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
                 background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
               }
@@ -756,26 +849,92 @@ PanelWindow {
             }
           }
 
+          // App search + picker
+          ColumnLayout { width: parent.width - Style.marginS*2; spacing: Style.marginXXS
+            TextField {
+              id: scSearchField; Layout.fillWidth: true; placeholderText: "Search apps..."
+              placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6)
+              font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+              background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+            }
+            Flickable {
+              Layout.fillWidth: true
+              implicitHeight: Math.min(appCol.implicitHeight, Math.round(200*Style.uiScaleRatio))
+              contentHeight: appCol.implicitHeight; clip: true
+              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+              Column {
+                id: appCol; width: parent.width; spacing: 0
+                Repeater {
+                  model: {
+                    if (typeof DesktopEntries === 'undefined') return [];
+                    var q = scSearchField.text.toLowerCase().trim();
+                    var apps = DesktopEntries.applications.values || [];
+                    var filtered = apps.filter(function(a) {
+                      if (!a.name || a.noDisplay) return false;
+                      return !q || (a.name||"").toLowerCase().indexOf(q) !== -1;
+                    });
+                    filtered.sort(function(a,b){ return (a.name||"").localeCompare(b.name||""); });
+                    return filtered.slice(0, 50);
+                  }
+                  delegate: Rectangle {
+                    required property var modelData
+                    width: appCol.width; height: Math.round(38*Style.uiScaleRatio)
+                    color: appHov.containsMouse ? Qt.alpha(Color.mPrimary, 0.1) : "transparent"
+                    Behavior on color { ColorAnimation { duration: 80 } }
+                    radius: Style.radiusS
+                    RowLayout {
+                      anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: Style.marginXS; rightMargin: Style.marginXS }
+                      spacing: Style.marginS
+                      IconImage {
+                        width: Math.round(22*Style.uiScaleRatio); height: width
+                        source: "image://icon/" + (modelData.icon || "application-x-executable")
+                        smooth: true; asynchronous: true
+                      }
+                      NText { Layout.fillWidth: true; text: modelData.name || ""; pointSize: Style.fontSizeS; color: Color.mOnSurface; elide: Text.ElideRight }
+                    }
+                    MouseArea {
+                      id: appHov; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        var appId = (modelData.id || "").replace(/\.desktop$/, "");
+                        var iconSrc = modelData.icon ? ("image://icon/" + modelData.icon) : "app-window";
+                        root.addShortcut(modelData.name, "gtk-launch " + appId, iconSrc, true);
+                        scSearchField.text = "";
+                        root.shortcutsPanelOpen = false;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // Custom command form
+          Rectangle { width: parent.width - Style.marginS*2; height: 1; color: Color.mOutline; opacity: 0.4 }
           RowLayout {
             width: parent.width - Style.marginS*2; spacing: Style.marginXS
             ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXXS
               RowLayout { Layout.fillWidth: true; spacing: Style.marginXXS
                 TextField {
                   id: scNameField; Layout.fillWidth: true; placeholderText: "Name"
-                  placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                  placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6); font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
                   background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
                 }
                 TextField {
                   id: scIconField; implicitWidth: Math.round(90*Style.uiScaleRatio); placeholderText: "icon"
-                  placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                  placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6); font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
                   background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
                 }
               }
               TextField {
-                id: scCmdField; Layout.fillWidth: true; placeholderText: "command or /path/to/script.sh"
-                placeholderTextColor: Color.mSecondary; font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+                id: scCmdField; Layout.fillWidth: true; placeholderText: "command or /path/to/app.desktop"
+                placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6); font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
                 background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
-                onAccepted: { root.addShortcut(scNameField.text, scCmdField.text, scIconField.text); scNameField.text=""; scCmdField.text=""; scIconField.text=""; }
+                onAccepted: {
+                  root._resolveDesktop(scCmdField.text, scNameField.text, scIconField.text, function(n, ic) {
+                    root.addShortcut(n, scCmdField.text, ic);
+                    scNameField.text=""; scCmdField.text=""; scIconField.text="";
+                  });
+                }
               }
             }
             Rectangle {
@@ -783,7 +942,12 @@ PanelWindow {
               color: scAddBtn.containsMouse?Qt.alpha(Color.mPrimary,0.18):"transparent"; Behavior on color{ColorAnimation{duration:80}}
               NIcon { anchors.centerIn: parent; icon: "plus"; pointSize: Style.fontSizeM; applyUiScale: false; color: scAddBtn.containsMouse?Color.mPrimary:Color.mOnSurfaceVariant }
               MouseArea { id: scAddBtn; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                onClicked: { root.addShortcut(scNameField.text, scCmdField.text, scIconField.text); scNameField.text=""; scCmdField.text=""; scIconField.text=""; }
+                onClicked: {
+                  root._resolveDesktop(scCmdField.text, scNameField.text, scIconField.text, function(n, ic) {
+                    root.addShortcut(n, scCmdField.text, ic);
+                    scNameField.text=""; scCmdField.text=""; scIconField.text="";
+                  });
+                }
               }
             }
           }
