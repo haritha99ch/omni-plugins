@@ -64,9 +64,16 @@ bind = SUPER SHIFT, G, exec, hyprctl dispatch movetoworkspace special:overlay-ap
 # Float all windows in the overlay workspace and open at a fixed size
 windowrule = match:workspace special:overlay-apps, float true
 windowrule = match:workspace special:overlay-apps, size 800 600
+
+# Invisible placeholder — opens on overlay open to keep the workspace alive
+# and steal focus from the active workspace (releases pointer lock in games)
+windowrule = match:title ^omni-placeholder$, opacity 0 0
+windowrule = match:title ^omni-placeholder$, float true
+windowrule = match:title ^omni-placeholder$, size 1 1
+windowrule = match:title ^omni-placeholder$, move -10 -10
 ```
 
-Adjust `800 600` to your preferred default window size.
+Adjust `800 600` to your preferred default window size. The placeholder requires `kitty` to be installed.
 
 ### 4. Visual (optional but recommended, `hyprland.conf` or theme file)
 

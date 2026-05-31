@@ -39,7 +39,7 @@ Item {
     var ws = CompositorService.windows;
     for (var i = 0; i < ws.length; i++) {
       var w = ws[i];
-      if (w && w.workspaceName === "special:overlay-apps" && w.title !== "overlay-placeholder")
+      if (w && w.workspaceName === "special:overlay-apps" && w.title !== "omni-placeholder")
         overlayAppsModel.append({ appId: w.appId || w.class || "", winTitle: w.title || "", winIndex: i });
     }
   }

@@ -30,7 +30,7 @@ PanelWindow {
   color: "transparent"
 
   mask: Region {
-    // Island + widget panels only — apps in special:overlay-apps are always reachable.
+    // Island + widget panels only — overlay-apps are always reachable.
 
     // Island
     Region {
@@ -153,9 +153,24 @@ PanelWindow {
   }
 
   function _launchInOverlay(command) {
+    _ensurePlaceholder();
     Qt.createQmlObject(
       'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] ' + command.replace(/"/g, '\\"') + '"]; running: true }',
       root, "OverlayShortcut");
+  }
+
+  function _ensurePlaceholder() {
+    var check = Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","clients","-j"]; running: true; stdout: StdioCollector {} }',
+      root, "PlaceholderCheck");
+    check.exited.connect(function() {
+      try {
+        var clients = JSON.parse(check.stdout.text);
+        if (!clients.some(function(c){ return c.title === "omni-placeholder"; }))
+          Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] kitty --title omni-placeholder sh -c \\"sleep infinity\\""]; running: true }', root, "Placeholder");
+      } catch(e) {}
+      check.destroy();
+    });
   }
 
 
@@ -171,6 +186,7 @@ PanelWindow {
         });
         if (shouldShow !== isShowing)
           Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","togglespecialworkspace","overlay-apps"]; running: true }', root, "Toggle");
+        if (shouldShow) _ensurePlaceholder();
         Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","' + (shouldShow ? "false" : "true") + '"]; running: true }', root, "Fallthrough");
       } catch(e) {}
       checker.destroy();
@@ -351,9 +367,14 @@ PanelWindow {
     var p = Object.assign({}, root.widgetPinned); p[id] = !(p[id] ?? true); root.widgetPinned = p;
   }
 
+  function _killPlaceholder() {
+    Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["sh","-c","hyprctl clients -j | python3 -c \\"import json,sys,subprocess;[subprocess.run([\'hyprctl\',\'dispatch\',\'closewindow\',\'address:\'+c[\'address\']]) for c in json.load(sys.stdin) if c[\'title\']==\'omni-placeholder\']\\"" ]; running: true }', root, "KillPlaceholder");
+  }
+
   onPanelsVisibleChanged: {
     if (!panelsVisible) {
       root.clickThrough = false;
+      _killPlaceholder();
       Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","false"]; running: true }', root, "FallthroughReset");
     }
     _toggleOverlayApps(panelsVisible);
