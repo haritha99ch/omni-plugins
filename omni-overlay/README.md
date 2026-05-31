@@ -67,30 +67,6 @@ decoration {
 
 ---
 
-## Shell Modification
-
-The taskbar widget must be patched to hide overlay workspace windows from the taskbar. Find this function in your shell's `Taskbar.qml`:
-
-```javascript
-function isMinimizedWorkspaceWindow(window) {
-  if (!window) return false;
-  return (window.workspaceName || "").toString().startsWith("special:");
-}
-```
-
-Change it to:
-
-```javascript
-function isMinimizedWorkspaceWindow(window) {
-  if (!window) return false;
-  var name = (window.workspaceName || "").toString();
-  return name.startsWith("special:") && name !== "special:overlay-apps";
-}
-```
-
-This prevents overlay apps from appearing as minimized windows in your taskbar.
-
----
 
 ## Widget Setup
 
