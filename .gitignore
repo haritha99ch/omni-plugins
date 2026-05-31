@@ -4,3 +4,6 @@
 **/steam_appid.txt
 **/__pycache__/
 **/*.pyc
+omni-overlay/widgets/discord/
+omni-overlay/widgets/obs/
+omni-overlay/widgets/steam/

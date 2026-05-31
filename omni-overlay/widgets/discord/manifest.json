@@ -1,9 +1,0 @@
-{
-  "id": "discord",
-  "name": "Discord",
-  "file": "DiscordWidget.qml",
-  "iconSrc": "file:///usr/share/icons/hicolor/256x256/apps/discord.png",
-  "iconFallback": "brand-discord",
-  "defaultX": "right",
-  "defaultY": 50
-}
