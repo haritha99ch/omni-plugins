@@ -7,7 +7,13 @@ Outputs a single JSON line to stdout.
 
 import json, os, re, sys
 
-STEAM_DIR   = os.path.expanduser("~/.local/share/Steam")
+DEFAULT_STEAM_DIR = os.path.expanduser("~/.local/share/Steam")
+STEAM_DIR   = os.path.expanduser(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_STEAM_DIR
+
+if not os.path.isdir(STEAM_DIR):
+    print(json.dumps([]), flush=True)
+    sys.exit(0)
+
 USERDATA    = os.path.join(STEAM_DIR, "userdata")
 LIBCACHE    = os.path.join(STEAM_DIR, "appcache", "librarycache")
 LIMIT       = 3

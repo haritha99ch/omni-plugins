@@ -68,6 +68,7 @@ PanelWindow {
   property bool settingsPanelOpen: false
   property bool shortcutsPanelOpen: false
   property var  recentGames: []
+  property string steamPath: "~/.local/share/Steam"
 
   // Custom shortcuts  [{name, command, icon}]
   property var customShortcuts: []
@@ -265,6 +266,7 @@ PanelWindow {
     s.widgetVisible  = root.widgetVisible;
     s.widgetPinned   = root.widgetPinned;
     s.pillMode       = root.pillMode;
+    s.steamPath      = root.steamPath;
     if (root.widgetSources && root.widgetSources.length > 0)
       s.widgetSources = root.widgetSources;
     else
@@ -279,6 +281,7 @@ PanelWindow {
     if (s.widgetPinned)   root.widgetPinned   = Object.assign({}, s.widgetPinned);
     if (s.pillMode !== undefined) root.pillMode = s.pillMode;
     if (s.widgetSources)  root.widgetSources = s.widgetSources.slice();
+    if (s.steamPath)      root.steamPath     = s.steamPath;
     if (s.customShortcuts)  root.customShortcuts  = s.customShortcuts.slice();
     Qt.callLater(fetchRemoteWidgets);
   }
@@ -509,7 +512,7 @@ PanelWindow {
   // Recent games
   Process {
     id: recentGamesProc; running: false
-    command: ["python3", root.pluginApi ? (root.pluginApi.pluginDir + "/scripts/steam-recent.py") : "/bin/true"]
+    command: root.pluginApi ? ["python3", root.pluginApi.pluginDir + "/scripts/steam-recent.py", root.steamPath] : ["true"]
     stdout: StdioCollector {
       onStreamFinished: {
         try { var p = JSON.parse(text.trim()); if (Array.isArray(p)) root.recentGames = p; }
@@ -763,13 +766,11 @@ PanelWindow {
           }
         }
 
-        // Settings panel  -  widget sources
+        // Settings panel  -  widget sources + Steam path
         Rectangle { width: parent.width; height: 1; visible: root.settingsPanelOpen; color: Color.mOutline; opacity: 0.5 }
         Column {
-          visible: root.settingsPanelOpen; width: parent.width; spacing: 0
-          padding: Style.marginS
+          visible: root.settingsPanelOpen; width: parent.width; spacing: 0; padding: Style.marginS
 
-          // Sources list
           Repeater {
             model: root.widgetSources
             delegate: RowLayout {
@@ -789,10 +790,8 @@ PanelWindow {
             }
           }
 
-          // Add source form
           RowLayout {
             width: parent.width - Style.marginS*2; spacing: Style.marginXS
-
             ColumnLayout { Layout.fillWidth: true; spacing: Style.marginXXS
               TextField {
                 id: srcNameField; Layout.fillWidth: true; placeholderText: "Source name"
@@ -807,7 +806,6 @@ PanelWindow {
                 background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
               }
             }
-
             Rectangle {
               width: Math.round(30*Style.uiScaleRatio); height: width; radius: Style.radiusS
               color: addBtn.containsMouse?Qt.alpha(Color.mPrimary,0.18):"transparent"; Behavior on color{ColorAnimation{duration:80}}
@@ -822,7 +820,30 @@ PanelWindow {
               }
             }
           }
+        }
 
+        Rectangle { width: parent.width; height: 1; visible: root.settingsPanelOpen; color: Color.mOutline; opacity: 0.5 }
+        Column {
+          visible: root.settingsPanelOpen; width: parent.width; spacing: 0; padding: Style.marginS
+          NText { text: "Steam library path"; pointSize: Style.fontSizeXS; font.weight: Style.fontWeightSemiBold; color: Color.mOnSurfaceVariant }
+          Item { width: 1; height: Style.marginXXS }
+          Row { spacing: Style.marginXS; width: parent.width - Style.marginS*2
+            NIcon { icon: "brand-steam"; pointSize: Style.fontSizeM; applyUiScale: false; color: Color.mOnSurfaceVariant; anchors.verticalCenter: parent.verticalCenter }
+            TextField {
+              id: steamPathField; width: parent.width - Style.marginS*2 - Style.fontSizeM - Style.marginXS
+              text: root.steamPath; placeholderText: "~/.local/share/Steam"
+              placeholderTextColor: Qt.alpha(Color.mOnSurfaceVariant, 0.6)
+              font.pointSize: Style.fontSizeXS; color: Color.mOnSurface
+              background: Rectangle { color: Color.mSurface; border.color: Color.mOutline; border.width: 1; radius: Style.radiusS }
+              onEditingFinished: {
+                root.steamPath = text.trim() || "~/.local/share/Steam";
+                root._saveState();
+                root._recentGamesFetched = false;
+                recentGamesProc.running = false;
+                Qt.callLater(function(){ recentGamesProc.running = true; });
+              }
+            }
+          }
         }
 
         // Shortcuts panel  -  toggled by "+" in shortcuts mode
