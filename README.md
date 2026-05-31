@@ -6,7 +6,7 @@ Plugin source for Noctalia Shell (Omni build).
 
 1. Open **Settings -> Plugins -> Sources**
 2. Add a new source:
-   - Name: `haritha99ch`
+   - Name: `Omni Plugin`
    - URL: `https://github.com/haritha99ch/omni-plugins`
 3. Go to **Settings -> Plugins -> Available** and install any plugin from this source
 
