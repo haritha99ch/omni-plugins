@@ -41,10 +41,10 @@ The following changes must be made manually to your Hyprland config. The plugin 
 
 ```conf
 misc {
-    # Keeps special:overlay-apps alive when all apps close
-    always_follow_on_dnd = true
+    close_special_on_empty = false  # keeps special:overlay-apps alive when all apps close
 }
 
+# Or use a workspace rule instead of the misc option above:
 workspace = special:overlay-apps, persistent:true
 ```
 
