@@ -23,7 +23,7 @@ The overlay HUD and all widgets work on any compositor supported by Noctalia She
 
 ## Installation
 
-Install via **Settings -> Plugins -> Available** from the `haritha99ch` source, or add the source manually:
+Install via **Settings -> Plugins -> Available** from the `Omni Plugin` source, or add the source manually:
 
 ```
 https://github.com/haritha99ch/omni-plugins
@@ -41,8 +41,11 @@ The following changes must be made manually to your Hyprland config. The plugin 
 
 ```conf
 misc {
-    close_special_on_empty = false  # keeps special:overlay-apps alive when all apps close
+    # Keeps special:overlay-apps alive when all apps close
+    always_follow_on_dnd = true
 }
+
+workspace = special:overlay-apps, persistent:true
 ```
 
 ### 2. Keybinds (`hyprland.conf` or `keybinds.conf`)
@@ -55,14 +58,17 @@ bind = SUPER, G, exec, qs -c omni-shell ipc call plugin:omni-overlay toggle
 bind = SUPER SHIFT, G, exec, hyprctl dispatch movetoworkspace special:overlay-apps
 ```
 
-### 2. Window Rules (`windowrules.conf`)
+### 3. Window Rules (`windowrules.conf`)
 
 ```conf
-# Float all windows in the overlay workspace
+# Float all windows in the overlay workspace and open at a fixed size
 windowrule = match:workspace special:overlay-apps, float true
+windowrule = match:workspace special:overlay-apps, size 800 600
+```
 
+Adjust `800 600` to your preferred default window size.
 
-### 3. Visual (optional but recommended, `hyprland.conf` or theme file)
+### 4. Visual (optional but recommended, `hyprland.conf` or theme file)
 
 ```conf
 decoration {
@@ -75,16 +81,9 @@ decoration {
 
 ---
 
-
 ## Widget Setup
 
-Additional widgets (Discord, OBS) are available via the built-in widget marketplace. Open the overlay -> island **Widgets** button -> settings gear -> add source:
-
-```
-https://github.com/haritha99ch/omni-overlay-widgets
-```
-
-This source is pre-configured on first install. See each widget's README for setup instructions.
+Additional widgets (Discord, OBS) are available via the built-in widget marketplace. Open the overlay -> island **Widgets** button -> settings gear. The source is pre-configured on first install. See each widget's README for setup instructions.
 
 ---
 
