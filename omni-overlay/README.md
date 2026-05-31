@@ -2,10 +2,22 @@
 
 Xbox Game Bar-style gaming overlay for Noctalia Shell. Features a dynamic island with Discord voice, OBS controls, audio, performance widgets, and a custom app workspace.
 
+## Compositor Support
+
+| Feature | Hyprland | Sway / Niri / LabWC |
+|---|---|---|
+| Overlay HUD (island, widgets) | Yes | Yes |
+| Discord, OBS, Audio, Performance widgets | Yes | Yes |
+| `special:overlay-apps` workspace | Yes | No |
+| App shortcuts (overlay mode) | Yes | No |
+| Click-through toggle | Yes | No |
+| Super+Shift+G move to overlay | Yes | No |
+
+The overlay HUD and all widgets work on any compositor supported by Noctalia Shell. The `special:overlay-apps` workspace feature is Hyprland-only - on other compositors the plugin runs without crashing but those features are silently disabled.
+
 ## Requirements
 
 - [Noctalia Shell](https://github.com/noctalia-dev/noctalia-shell)
-- Hyprland compositor
 
 ---
 
