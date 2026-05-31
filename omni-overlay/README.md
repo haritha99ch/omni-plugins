@@ -37,7 +37,15 @@ After install, open **Settings -> Plugins -> Available** and install **Omni Over
 
 The following changes must be made manually to your Hyprland config. The plugin cannot write to config files itself.
 
-### 1. Keybinds (`hyprland.conf` or `keybinds.conf`)
+### 1. General (`hyprland.conf`)
+
+```conf
+misc {
+    close_special_on_empty = false  # keeps special:overlay-apps alive when all apps close
+}
+```
+
+### 2. Keybinds (`hyprland.conf` or `keybinds.conf`)
 
 ```conf
 # Toggle the overlay

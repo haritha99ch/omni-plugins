@@ -171,7 +171,6 @@ PanelWindow {
         });
         if (shouldShow !== isShowing)
           Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","togglespecialworkspace","overlay-apps"]; running: true }', root, "Toggle");
-        // Auto-manage special_fallthrough — no config change needed by the user
         Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","' + (shouldShow ? "false" : "true") + '"]; running: true }', root, "Fallthrough");
       } catch(e) {}
       checker.destroy();
