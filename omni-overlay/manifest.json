@@ -4,7 +4,7 @@
   "version": "1.2.4",
   "minOmniVersion": "3.6.0",
   "author": "haritha99ch",
-  "license": "MIT",
+  "license": "CC0-1.0",
   "description": "Xbox Game Bar-style overlay with Discord voice, OBS control, Steam chat, audio and performance widgets.",
   "tags": ["Gaming", "Overlay"],
   "entryPoints": {

@@ -8,7 +8,7 @@ Xbox Game Bar-style gaming overlay for Noctalia Shell. Features a dynamic island
 
 > **Looking for maintainers**
 >
-> If anyone from the Noctalia community finds this and has the time to actively maintain it - please take over. I cannot dedicate enough time to keep it properly maintained. You are free to fork, modify, redistribute, and take full ownership under the existing MIT license.
+> If anyone from the Noctalia community finds this and has the time to actively maintain it - please take over. I cannot dedicate enough time to keep it properly maintained. You are free to fork, modify, redistribute, and take full ownership under the existing CC0 — public domain.
 
 ---
 
