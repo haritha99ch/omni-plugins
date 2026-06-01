@@ -367,14 +367,9 @@ PanelWindow {
     var p = Object.assign({}, root.widgetPinned); p[id] = !(p[id] ?? true); root.widgetPinned = p;
   }
 
-  function _killPlaceholder() {
-    Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["sh","-c","hyprctl clients -j | python3 -c \\"import json,sys,subprocess;[subprocess.run([\'hyprctl\',\'dispatch\',\'closewindow\',\'address:\'+c[\'address\']]) for c in json.load(sys.stdin) if c[\'title\']==\'omni-placeholder\']\\"" ]; running: true }', root, "KillPlaceholder");
-  }
-
   onPanelsVisibleChanged: {
     if (!panelsVisible) {
       root.clickThrough = false;
-      _killPlaceholder();
       Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","false"]; running: true }', root, "FallthroughReset");
     }
     _toggleOverlayApps(panelsVisible);
@@ -403,6 +398,7 @@ PanelWindow {
     _loadState();
     if (!_widgetsLoaded) { _widgetsLoaded = true; _discoverWidgets(); }
     if (!_recentGamesFetched) { _recentGamesFetched = true; Qt.callLater(function(){ recentGamesProc.running = true; }); }
+    Qt.callLater(_ensurePlaceholder);
   }
 
   // Read all manifests from widgets/<id>/manifest.json
