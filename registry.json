@@ -3,7 +3,7 @@
     {
       "id": "omni-overlay",
       "name": "Omni Overlay",
-      "version": "1.1.9",
+      "version": "1.2.0",
       "author": "haritha99ch",
       "license": "MIT",
       "description": "Xbox Game Bar-style gaming overlay with audio and performance widgets built-in. Discord, OBS and Steam widgets installable from the built-in widget marketplace.",
