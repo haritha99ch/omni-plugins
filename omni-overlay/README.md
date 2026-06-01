@@ -52,6 +52,7 @@ workspace = special:overlay-apps, persistent:true
 
 ```conf
 # Toggle the overlay
+# Replace "omni-shell" with your shell config name (e.g. "noctalia-shell" on vanilla Noctalia)
 bind = SUPER, G, exec, qs -c omni-shell ipc call plugin:omni-overlay toggle
 
 # Move the active window into the overlay workspace
