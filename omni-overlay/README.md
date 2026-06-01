@@ -67,15 +67,17 @@ bind = SUPER SHIFT, G, exec, hyprctl dispatch movetoworkspace special:overlay-ap
 windowrule = match:workspace special:overlay-apps, float true
 windowrule = match:workspace special:overlay-apps, size 800 600
 
-# Invisible placeholder window (requires kitty)
+# Invisible placeholder window (requires kitty).
 # Opens automatically when the overlay starts to keep special:overlay-apps alive.
 # Also used by the click-through toggle to steal focus from games/apps,
 # which releases Wayland pointer lock (stops camera movement while using overlay).
-# Rules must come AFTER the kitty class opacity rule to override it.
+#
+# IMPORTANT: These rules must be at the VERY BOTTOM of windowrules.conf
+# to override the generic kitty class opacity rule.
 windowrule = match:title ^omni-placeholder$, float true
 windowrule = match:title ^omni-placeholder$, size 1 1
 windowrule = match:title ^omni-placeholder$, opacity 0
-windowrule = match:title ^omni-placeholder$, move -10 -10
+windowrule = match:title ^omni-placeholder$, move 1 1
 ```
 
 Adjust `800 600` to your preferred default window size.
