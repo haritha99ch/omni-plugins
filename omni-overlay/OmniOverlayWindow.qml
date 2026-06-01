@@ -159,6 +159,23 @@ PanelWindow {
       root, "OverlayShortcut");
   }
 
+  property bool _watchingForPlaceholder: false
+
+  Connections {
+    target: CompositorService
+    function onWindowListChanged() {
+      if (!root._watchingForPlaceholder) return;
+      var ws = CompositorService.windows;
+      for (var i = 0; i < ws.length; i++) {
+        if (ws[i] && ws[i].title === "omni-placeholder") {
+          root._watchingForPlaceholder = false;
+          root._focusPlaceholder();
+          return;
+        }
+      }
+    }
+  }
+
   function _ensurePlaceholder() {
     var check = Qt.createQmlObject(
       'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","clients","-j"]; running: true; stdout: StdioCollector {} }',
@@ -166,10 +183,23 @@ PanelWindow {
     check.exited.connect(function() {
       try {
         var clients = JSON.parse(check.stdout.text);
-        if (!clients.some(function(c){ return c.title === "omni-placeholder"; }))
-          Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] kitty --title omni-placeholder sh -c \\"sleep infinity\\""]; running: true }', root, "Placeholder");
+        if (!clients.some(function(c){ return c.title === "omni-placeholder"; })) {
+          root._watchingForPlaceholder = true;
+          Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] kitty --title omni-placeholder --override confirm_on_close_count=0 sh -c \\"sleep infinity\\""]; running: true }', root, "Placeholder");
+        }
       } catch(e) {}
       check.destroy();
+    });
+  }
+
+  function _focusPlaceholder() {
+    var reader = Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","getoption","cursor:no_warps"]; running: true; stdout: StdioCollector {} }',
+      root, "GetNoWarps");
+    reader.exited.connect(function() {
+      var original = reader.stdout.text.indexOf("1") !== -1 ? "true" : "false";
+      reader.destroy();
+      Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","--batch","keyword cursor:no_warps true ; dispatch focuswindow title:omni-placeholder ; keyword cursor:no_warps ' + original + '"]; running: true }', root, "FocusPlaceholder");
     });
   }
 
@@ -698,6 +728,8 @@ PanelWindow {
                 root.clickThrough = !root.clickThrough;
                 var val = root.clickThrough ? "true" : "false";
                 Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","' + val + '"]; running: true }', root, "Fallthrough");
+                if (!root.clickThrough)
+                  root._focusPlaceholder();
               }
             }
 
