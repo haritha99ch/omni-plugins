@@ -185,7 +185,7 @@ PanelWindow {
         var clients = JSON.parse(check.stdout.text);
         if (!clients.some(function(c){ return c.title === "omni-placeholder"; })) {
           root._watchingForPlaceholder = true;
-          Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] kitty --title omni-placeholder --override confirm_on_close_count=0 sh -c \\"sleep infinity\\""]; running: true }', root, "Placeholder");
+          Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] kitty --title omni-placeholder --override confirm_os_window_close=0 sh -c \\"sleep infinity\\""]; running: true }', root, "Placeholder");
         }
       } catch(e) {}
       check.destroy();
@@ -203,6 +203,11 @@ PanelWindow {
     });
   }
 
+  function _closePlaceholder() {
+    Qt.createQmlObject(
+      'import QtQuick; import Quickshell.Io; Process { command: ["pkill","-9","-f","omni-placeholder"]; running: true }',
+      root, "KillPlaceholder");
+  }
 
   function _toggleOverlayApps(shouldShow) {
     var checker = Qt.createQmlObject(
@@ -217,6 +222,7 @@ PanelWindow {
         if (shouldShow !== isShowing)
           Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","togglespecialworkspace","overlay-apps"]; running: true }', root, "Toggle");
         if (shouldShow) _ensurePlaceholder();
+        else _closePlaceholder();
         Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","keyword","input:special_fallthrough","' + (shouldShow ? "false" : "true") + '"]; running: true }', root, "Fallthrough");
       } catch(e) {}
       checker.destroy();
