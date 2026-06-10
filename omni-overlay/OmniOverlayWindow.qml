@@ -153,13 +153,12 @@ PanelWindow {
   }
 
   function _launchInOverlay(command) {
+    _pendingOverlayCommand = command;
     _ensurePlaceholder();
-    Qt.createQmlObject(
-      'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] ' + command.replace(/"/g, '\\"') + '"]; running: true }',
-      root, "OverlayShortcut");
   }
 
   property bool _watchingForPlaceholder: false
+  property string _pendingOverlayCommand: ""
 
   Connections {
     target: CompositorService
@@ -186,6 +185,9 @@ PanelWindow {
         if (!clients.some(function(c){ return c.title === "omni-placeholder"; })) {
           root._watchingForPlaceholder = true;
           Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] kitty --title omni-placeholder --override confirm_os_window_close=0 sh -c \\"sleep infinity\\""]; running: true }', root, "Placeholder");
+        } else {
+          // Placeholder already exists, focus it immediately
+          root._focusPlaceholder();
         }
       } catch(e) {}
       check.destroy();
@@ -200,6 +202,14 @@ PanelWindow {
       var original = reader.stdout.text.indexOf("1") !== -1 ? "true" : "false";
       reader.destroy();
       Qt.createQmlObject('import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","--batch","keyword cursor:no_warps true ; dispatch focuswindow title:omni-placeholder ; keyword cursor:no_warps ' + original + '"]; running: true }', root, "FocusPlaceholder");
+      // After focusing placeholder, spawn any pending overlay command
+      if (root._pendingOverlayCommand) {
+        var cmd = root._pendingOverlayCommand;
+        root._pendingOverlayCommand = "";
+        Qt.createQmlObject(
+          'import QtQuick; import Quickshell.Io; Process { command: ["hyprctl","dispatch","exec","[workspace special:overlay-apps] ' + cmd.replace(/"/g, '\\"') + '"]; running: true }',
+          root, "OverlayShortcut");
+      }
     });
   }
 
